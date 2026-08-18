@@ -1,7 +1,5 @@
 import streamlit as st
 import random
-import json
-import os
 
 # =========================================================
 # CONFIGURACIÓ
@@ -16,110 +14,48 @@ st.set_page_config(
 NOIS = ["Barat", "Pau", "Pol", "Oriol", "Macià", "Roc"]
 NOIES = ["Laura", "Clàudia", "Lidia", "Caty"]
 
-# De moment posem PINs manualment.
-# Després els podem generar automàticament des de la zona admin.
-PINS = {
-    "Barat": "4821",
-    "Pau": "7354",
-    "Pol": "2196",
-    "Oriol": "8642",
-    "Macià": "3517",
-    "Roc": "9273",
-    "Laura": "6048",
-    "Clàudia": "1735",
-    "Lidia": "5489",
-    "Caty": "3164"
-}
-
-ADMIN_PASSWORD = "malgrat26"
-
-FITXER_SORTEIG = "sorteig.json"
+PARTICIPANTS = NOIS + NOIES
 
 
 # =========================================================
 # FUNCIONS
 # =========================================================
 
-def guardar_sorteig(sorteig):
-    """Guarda el sorteig en un fitxer JSON."""
-
-    with open(FITXER_SORTEIG, "w", encoding="utf-8") as fitxer:
-        json.dump(
-            sorteig,
-            fitxer,
-            ensure_ascii=False,
-            indent=4
-        )
-
-
-def carregar_sorteig():
-    """Carrega el sorteig si ja existeix."""
-
-    if not os.path.exists(FITXER_SORTEIG):
-        return None
-
-    with open(FITXER_SORTEIG, "r", encoding="utf-8") as fitxer:
-        return json.load(fitxer)
-
-
 def generar_sorteig():
     """
-    Genera el sorteig.
-
-    - Cada noi rep una noia.
-    - Cada noia rep un noi.
-    - Els sortejos són independents.
-    - Les noies es reparteixen de manera equilibrada.
-    - S'eviten parelles recíproques.
+    Cada noi rep una noia.
+    Cada noia rep un noi.
+    No hi ha parelles recíproques.
+    Les repeticions de les noies són equilibrades.
     """
 
-    # -----------------------------------------------------
+    # -----------------------------
     # NOIS -> NOIES
-    # -----------------------------------------------------
-
-    # Tenim 6 nois i 4 noies.
-    # Creem una llista equilibrada:
-    #
-    # 4 noies apareixen una vegada
-    # + 2 noies apareixen una segona vegada
+    # -----------------------------
 
     noies_assignades = NOIES.copy()
 
-    noies_extra = random.sample(
+    # Com tenim 6 nois i 4 noies,
+    # dues noies apareixeran dues vegades.
+    extres = random.sample(
         NOIES,
         len(NOIS) - len(NOIES)
     )
 
-    noies_assignades.extend(noies_extra)
+    noies_assignades.extend(extres)
 
     random.shuffle(noies_assignades)
 
-    sorteig_nois = {}
+    sorteig_nois = dict(
+        zip(NOIS, noies_assignades)
+    )
 
-    for noi, noia in zip(NOIS, noies_assignades):
-        sorteig_nois[noi] = noia
-
-    # -----------------------------------------------------
+    # -----------------------------
     # NOIES -> NOIS
-    # -----------------------------------------------------
-    #
-    # Volem que:
-    #
-    # Laura -> X
-    #
-    # però si X -> Laura,
-    # NO volem Laura -> X.
-    #
-    # Així evitem parelles recíproques.
-    # -----------------------------------------------------
-
-    intents = 0
+    # -----------------------------
 
     while True:
 
-        intents += 1
-
-        # Cada noia tindrà un noi diferent
         nois_assignats = random.sample(
             NOIS,
             len(NOIES)
@@ -129,6 +65,8 @@ def generar_sorteig():
             zip(NOIES, nois_assignats)
         )
 
+        # Comprovem que no hi hagi
+        # cap parella recíproca.
         reciproc = False
 
         for noia, noi in sorteig_noies.items():
@@ -140,14 +78,6 @@ def generar_sorteig():
         if not reciproc:
             break
 
-        # Protecció per si alguna cosa estranya passés
-        if intents > 10000:
-            raise Exception(
-                "No s'ha pogut generar un sorteig vàlid."
-            )
-
-    # Unim els dos sortejos
-
     sorteig = {}
 
     sorteig.update(sorteig_nois)
@@ -156,14 +86,39 @@ def generar_sorteig():
     return sorteig
 
 
+def obtenir_sorteig():
+    """
+    Llegeix el sorteig guardat als secrets.
+    """
+
+    if "sorteig" not in st.secrets:
+        return None
+
+    if not st.secrets["sorteig"].get("actiu", False):
+        return None
+
+    resultat = {}
+
+    for persona in PARTICIPANTS:
+
+        if persona in st.secrets["sorteig"]:
+            resultat[persona] = st.secrets["sorteig"][persona]
+
+    if len(resultat) != len(PARTICIPANTS):
+        return None
+
+    return resultat
+
+
 # =========================================================
-# INTERFÍCIE
+# CAPÇALERA
 # =========================================================
 
 st.title("🎭 Nit Temàtica Malgrat '26")
 
 st.write(
-    "Descobreix de qui t'hauràs de vestir aquesta nit 👀"
+    "Introdueix el teu nom i el teu PIN per descobrir "
+    "de qui t'hauràs de vestir 👀"
 )
 
 st.divider()
@@ -173,27 +128,24 @@ st.divider()
 # CONSULTAR RESULTAT
 # =========================================================
 
-st.subheader("🎟️ Consulta el teu sorteig")
-
-participants = NOIS + NOIES
+st.subheader("🎟️ Descobreix qui t'ha tocat")
 
 persona = st.selectbox(
     "Qui ets?",
-    ["Selecciona el teu nom"] + participants
+    ["Selecciona el teu nom"] + PARTICIPANTS
 )
 
 pin = st.text_input(
-    "Introdueix el teu PIN",
+    "PIN",
     type="password",
-    max_chars=4
+    max_chars=4,
+    placeholder="••••"
 )
 
 if st.button(
-    "👀 Descobrir qui m'ha tocat",
+    "🎭 Descobrir el meu resultat",
     use_container_width=True
 ):
-
-    sorteig = carregar_sorteig()
 
     if persona == "Selecciona el teu nom":
 
@@ -201,37 +153,39 @@ if st.button(
             "Selecciona primer el teu nom."
         )
 
-    elif pin != PINS[persona]:
+    elif pin != str(st.secrets["pins"][persona]):
 
         st.error(
             "❌ El PIN no és correcte."
         )
 
-    elif sorteig is None:
-
-        st.warning(
-            "⏳ Encara no s'ha fet el sorteig."
-        )
-
     else:
 
-        resultat = sorteig[persona]
+        sorteig = obtenir_sorteig()
 
-        st.balloons()
+        if sorteig is None:
 
-        st.success(
-            f"🎉 **{persona}**, t'ha tocat..."
-        )
+            st.info(
+                "⏳ El sorteig encara no s'ha fet."
+            )
 
-        st.markdown(
-            f"""
-            ## 🎭 {resultat}
-            """
-        )
+        else:
 
-        st.info(
-            "🤫 No ho expliquis als altres!"
-        )
+            resultat = sorteig[persona]
+
+            st.balloons()
+
+            st.markdown(
+                f"""
+                ### 🎉 {persona}, t'ha tocat...
+
+                # 🎭 {resultat}
+                """
+            )
+
+            st.info(
+                "🤫 Guarda el secret!"
+            )
 
 
 # =========================================================
@@ -240,88 +194,117 @@ if st.button(
 
 st.divider()
 
-with st.expander("🔐 Zona administrador"):
+with st.expander("⚙️ Administrador"):
 
     password = st.text_input(
         "Contrasenya d'administrador",
-        type="password"
+        type="password",
+        key="admin_password"
     )
 
-    if password == ADMIN_PASSWORD:
+    if password:
 
-        st.success("Administrador identificat.")
+        if password != st.secrets["admin_password"]:
 
-        sorteig_actual = carregar_sorteig()
-
-        if sorteig_actual is None:
-
-            st.info(
-                "Encara no s'ha fet cap sorteig."
+            st.error(
+                "Contrasenya incorrecta."
             )
 
         else:
 
-            st.warning(
-                "⚠️ Ja existeix un sorteig."
-            )
-
-        if st.button(
-            "🎲 Fer un nou sorteig",
-            use_container_width=True
-        ):
-
-            nou_sorteig = generar_sorteig()
-
-            guardar_sorteig(nou_sorteig)
-
             st.success(
-                "✅ Sorteig realitzat correctament!"
+                "🔓 Mode administrador"
             )
 
-            st.rerun()
+            sorteig_actual = obtenir_sorteig()
 
-        # -------------------------------------------------
-        # RESULTATS ADMIN
-        # -------------------------------------------------
+            if sorteig_actual:
 
-        sorteig_actual = carregar_sorteig()
-
-        if sorteig_actual:
-
-            st.subheader("👑 Resultats del sorteig")
-
-            st.caption(
-                "Aquesta informació només apareix a la zona administrador."
-            )
-
-            st.write("### 👦 Nois")
-
-            for noi in NOIS:
-
-                st.write(
-                    f"**{noi}** → {sorteig_actual[noi]}"
+                st.success(
+                    "✅ El sorteig està actiu."
                 )
 
-            st.write("### 👧 Noies")
+                st.write("### Resultats actuals")
 
-            for noia in NOIES:
+                st.write("**👦 Nois**")
 
-                st.write(
-                    f"**{noia}** → {sorteig_actual[noia]}"
+                for noi in NOIS:
+                    st.write(
+                        f"{noi} → {sorteig_actual[noi]}"
+                    )
+
+                st.write("**👧 Noies**")
+
+                for noia in NOIES:
+                    st.write(
+                        f"{noia} → {sorteig_actual[noia]}"
+                    )
+
+            else:
+
+                st.info(
+                    "Encara no hi ha cap sorteig actiu."
                 )
 
-            st.divider()
+                if st.button(
+                    "🎲 Generar sorteig",
+                    use_container_width=True
+                ):
 
-            st.write("### 🔑 PINs")
+                    nou_sorteig = generar_sorteig()
 
-            for persona_nom, persona_pin in PINS.items():
+                    st.session_state[
+                        "nou_sorteig"
+                    ] = nou_sorteig
 
-                st.write(
-                    f"**{persona_nom}:** `{persona_pin}`"
+            # ---------------------------------------------
+            # MOSTRAR SORTEIG GENERAT
+            # ---------------------------------------------
+
+            if "nou_sorteig" in st.session_state:
+
+                nou_sorteig = st.session_state[
+                    "nou_sorteig"
+                ]
+
+                st.success(
+                    "🎉 Sorteig generat!"
                 )
 
-    elif password:
+                st.write(
+                    "Comprova'l i copia el bloc de sota "
+                    "als Secrets de Streamlit."
+                )
 
-        st.error(
-            "Contrasenya incorrecta."
-        )
+                st.write("### 👦 Nois")
+
+                for noi in NOIS:
+                    st.write(
+                        f"**{noi}** → "
+                        f"{nou_sorteig[noi]}"
+                    )
+
+                st.write("### 👧 Noies")
+
+                for noia in NOIES:
+                    st.write(
+                        f"**{noia}** → "
+                        f"{nou_sorteig[noia]}"
+                    )
+
+                secrets_text = """
+[sorteig]
+actiu = true
+"""
+
+                for persona in PARTICIPANTS:
+
+                    secrets_text += (
+                        f'"{persona}" = '
+                        f'"{nou_sorteig[persona]}"\n'
+                    )
+
+                st.code(
+                    secrets_text,
+                    language="toml"
+                )
